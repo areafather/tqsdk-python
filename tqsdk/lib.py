@@ -11,15 +11,18 @@ class TargetPosTaskSingleton(type):
     _instances = {}
 
     def __call__(cls, api, symbol, price="ACTIVE", offset_priority="今昨,开", trade_chan=None, *args, **kwargs):
-        if symbol not in TargetPosTaskSingleton._instances:
-            TargetPosTaskSingleton._instances[symbol] = super(TargetPosTaskSingleton, cls).__call__(api, symbol, price, offset_priority, trade_chan, *args, **kwargs)
+        # 每个 api 都有一个独立的 TargetPosTaskSingleton._instances
+        if api not in TargetPosTaskSingleton._instances:
+            TargetPosTaskSingleton._instances[api] = {}
+        if symbol not in TargetPosTaskSingleton._instances[api]:
+            TargetPosTaskSingleton._instances[api][symbol] = super(TargetPosTaskSingleton, cls).__call__(api, symbol, price, offset_priority, trade_chan, *args, **kwargs)
         else:
-            instance = TargetPosTaskSingleton._instances[symbol]
+            instance = TargetPosTaskSingleton._instances[api][symbol]
             if instance._offset_priority != offset_priority:
                 raise Exception("您试图用不同的 offset_priority 参数创建两个 %s 调仓任务, offset_priority参数原为 %s, 现为 %s" % (symbol, instance._offset_priority, offset_priority))
             if instance._price != price:
                 raise Exception("您试图用不同的 price 参数创建两个 %s 调仓任务, price参数原为 %s, 现为 %s" % (symbol, instance._price, price))
-        return TargetPosTaskSingleton._instances[symbol]
+        return TargetPosTaskSingleton._instances[api][symbol]
 
 
 class TargetPosTask(object, metaclass=TargetPosTaskSingleton):
