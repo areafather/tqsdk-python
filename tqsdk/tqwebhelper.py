@@ -25,8 +25,14 @@ class TqWebHelper(object):
         """初始化，检查参数"""
         self._api = api
         self._logger = self._api._logger.getChild("TqWebHelper")  # 调试信息输出
-        self._http_server_host = "127.0.0.1"
-        self._http_server_port = 0
+        if isinstance(self._api._web_gui, str):
+            host, _, port = urlparse(self._api._web_gui).netloc.partition(":")
+            self._http_server_host = host
+            self._http_server_port = int(port) if port else 0
+        else:
+            self._http_server_host = "127.0.0.1"
+            self._http_server_port = 0
+
         args = TqWebHelper.parser_arguments()
         if args:
             if args["_action"] == "run":
