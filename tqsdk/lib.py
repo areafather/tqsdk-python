@@ -5,10 +5,11 @@ __author__ = 'chengzhi'
 from tqsdk.api import TqChan, TqApi
 from asyncio import gather
 from typing import Optional
+import weakref
 
 
 class TargetPosTaskSingleton(type):
-    _instances = {}
+    _instances = weakref.WeakKeyDictionary({})
 
     def __call__(cls, api, symbol, price="ACTIVE", offset_priority="今昨,开", trade_chan=None, *args, **kwargs):
         # 每个 api 都有一个独立的 TargetPosTaskSingleton._instances

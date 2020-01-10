@@ -58,7 +58,7 @@ class TqApi(object):
     DEFAULT_TD_URL = "wss://opentd.shinnytech.com/trade/user0"
 
     def __init__(self, account: Union['TqAccount', TqSim, None] = None, auth: Optional[str] = None, url: Optional[str] = None,
-                 backtest: Union[TqBacktest, TqReplay, None] = None, web_gui: bool = False, debug: Optional[str] = None,
+                 backtest: Union[TqBacktest, TqReplay, None] = None, web_gui: [bool, str] = False, debug: Optional[str] = None,
                  loop: Optional[asyncio.AbstractEventLoop] = None, _ins_url=None, _md_url=None, _td_url=None) -> None:
         """
         创建天勤接口实例
@@ -95,7 +95,7 @@ class TqApi(object):
 
             loop(asyncio.AbstractEventLoop): [可选]使用指定的 IOLoop, 默认创建一个新的.
 
-            web_gui(bool): [可选]是否启用 图形化界面 功能, 默认不启用.
+            web_gui(bool/str): [可选]是否启用 图形化界面 功能, 默认不启用. 启用图形化界面可以直接设置网页地址
                 * 为了图形化界面能够接收到程序传输的数据并且刷新，在程序中，需要循环调用 api.wait_update的形式去更新和获取数据
                 * 推荐打开图形化界面的浏览器为Google Chrome 或 Firefox
 
@@ -130,6 +130,12 @@ class TqApi(object):
             # 开启 web_gui 功能
             from tqsdk import TqApi
             api = TqApi(web_gui=True)
+
+        Example6::
+
+            # 开启 web_gui 功能
+            from tqsdk import TqApi
+            api = TqApi(web_gui="http://127.0.0.1:9876")
 
         """
 
@@ -1443,42 +1449,6 @@ class TqApi(object):
                                              int(serial["array"][-1, 1]) + 1, data)
         serial["update_row"] = serial["width"]
 
-    def _process_chart_data(self, serial, symbol, duration, col, count, right, data):
-        if not data:
-            return
-        if ".open" in data:
-            data_type = "KSERIAL"
-        elif ".type" in data:
-            data_type = data[".type"]
-            rows = np.where(np.not_equal(data_type, None))[0]
-            if len(rows) == 0:
-                return
-            data_type = data_type[rows[0]]
-        else:
-            data_type = "LINE"
-        if data_type in {"LINE", "DOT", "DASH", "BAR"}:
-            self._send_series_data(symbol, duration, col, {
-                "type": "SERIAL",
-                "range_left": right - count,
-                "range_right": right - 1,
-                "data": data[""].tolist(),
-                "style": data_type,
-                "color": int(data.get(".color", [0xFFFF0000])[-1]),
-                "width": int(data.get(".width", [1])[-1]),
-                "board": data.get(".board", ["MAIN"])[-1],
-            })
-        elif data_type == "KSERIAL":
-            self._send_series_data(symbol, duration, col, {
-                "type": "KSERIAL",
-                "range_left": right - count,
-                "range_right": right - 1,
-                "open": data[".open"].tolist(),
-                "high": data[".high"].tolist(),
-                "low": data[".low"].tolist(),
-                "close": data[".close"].tolist(),
-                "board": data.get(".board", ["MAIN"])[-1],
-            })
-
     def _process_chart_data_for_web(self, serial, symbol, duration, col, count, right, data):
         # 与 _process_chart_data 函数功能类似，但是处理成符合 diff 协议的序列，在 js 端就不需要特殊处理了
         if not data:
@@ -1501,13 +1471,14 @@ class TqApi(object):
                     # 数据结构与 KSERIAL 保持一致，只有一列的时候，默认 key 值取 "value"
                     "value": data[""][i]
                 }
+            color = data.get(".color", ["#FF0000"])[-1]
             self._send_series_data(symbol, duration, col, {
                 "type": "SERIAL",
                 "data": send_data,
                 "style": data_type,
                 "range_left": right - count,
                 "range_right": right - 1,
-                "color": int(data.get(".color", [0xFFFF0000])[-1]),
+                "color": color if isinstance(color, str) else int(color),
                 "width": int(data.get(".width", [1])[-1]),
                 "board": data.get(".board", ["MAIN"])[-1]
             }, aid="set_web_chart_data")
@@ -2019,7 +1990,7 @@ class TqApi(object):
             self._master._slave_send_pack(pack)
 
     def draw_text(self, base_k_dataframe: pd.DataFrame, text: str, x: Optional[int] = None, y: Optional[float] = None,
-                  id: Optional[str] = None, board: str = "MAIN", color: int = 0xFFFF0000) -> None:
+                  id: Optional[str] = None, board: str = "MAIN", color: Union[str, int] = "red") -> None:
         """
         配合天勤使用时, 在天勤的行情图上绘制一个字符串
 
@@ -2036,7 +2007,9 @@ class TqApi(object):
 
             board (str): 选择图板, 可选, 缺省为 "MAIN" 表示绘制在主图
 
-            color (ARGB): 文本颜色, 可选, 缺省为红色.
+            color (str/int): 文本颜色, 可选, 缺省为 "red"
+                * str : 符合 CSS Color 命名规则的字符串, 例如: "red", "#FF0000", "#FF0000FF", "rgb(255, 0, 0)", "rgba(255, 0, 0, .5)"
+                * int : 十六进制整数表示颜色, ARGB, 例如: 0xffff0000
 
         Example::
 
@@ -2061,7 +2034,7 @@ class TqApi(object):
         self._send_chart_data(base_k_dataframe, id, serial)
 
     def draw_line(self, base_k_dataframe: pd.DataFrame, x1: int, y1: float, x2: int, y2: float,
-                  id: Optional[str] = None, board: str = "MAIN", line_type: str = "LINE", color: int = 0xFFFF0000,
+                  id: Optional[str] = None, board: str = "MAIN", line_type: str = "LINE", color: Union[str, int] = "red",
                   width: int = 1) -> None:
         """
         配合天勤使用时, 在天勤的行情图上绘制一个直线/线段/射线
@@ -2083,7 +2056,9 @@ class TqApi(object):
 
             line_type ("LINE" | "SEG" | "RAY"): 画线类型, 可选, 默认为 LINE. LINE=直线, SEG=线段, RAY=射线
 
-            color (ARGB): 线颜色, 可选, 缺省为 红色
+            color (str/int): 线颜色, 可选, 缺省为 "red"
+                * str : 符合 CSS Color 命名规则的字符串, 例如: "red", "#FF0000", "#FF0000FF", "rgb(255, 0, 0)", "rgba(255, 0, 0, .5)"
+                * int : 十六进制整数表示颜色, ARGB, 例如: 0xffff0000
 
             width (int): 线宽度, 可选, 缺省为 1
         """
@@ -2102,7 +2077,7 @@ class TqApi(object):
         self._send_chart_data(base_k_dataframe, id, serial)
 
     def draw_box(self, base_k_dataframe: pd.DataFrame, x1: int, y1: float, x2: int, y2: float, id: Optional[str] = None,
-                 board: str = "MAIN", bg_color: int = 0x00000000, color: int = 0xFFFF0000, width: int = 1) -> None:
+                 board: str = "MAIN", bg_color: Union[str, int] = "black", color: Union[str, int] = "red", width: int = 1) -> None:
         """
         配合天勤使用时, 在天勤的行情图上绘制一个矩形
 
@@ -2121,9 +2096,13 @@ class TqApi(object):
 
             board (str): 选择图板, 可选, 缺省为 "MAIN" 表示绘制在主图
 
-            bg_color (ARGB): 填充颜色, 可选, 缺省为 空
+            bg_color (str/int): 填充颜色, 可选, 缺省为 "black"
+                * str : 符合 CSS Color 命名规则的字符串, 例如: "red", "#FF0000", "#FF0000FF", "rgb(255, 0, 0)", "rgba(255, 0, 0, .5)"
+                * int : 十六进制整数表示颜色, ARGB, 例如: 0xffff0000
 
-            color (ARGB): 边框颜色, 可选, 缺省为 红色
+            color (str/int): 边框颜色, 可选, 缺省为 "red"
+                * str : 符合 CSS Color 命名规则的字符串, 例如: "red", "#FF0000", "#FF0000FF", "rgb(255, 0, 0)", "rgba(255, 0, 0, .5)"
+                * int : 十六进制整数表示颜色, ARGB, 例如: 0xffff0000
 
             width (int): 边框宽度, 可选, 缺省为 1
 
